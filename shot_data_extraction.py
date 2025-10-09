@@ -6,7 +6,7 @@ import json
 import cv2
 import os
 
-INPUT_NO_OF_FRAMES = 10
+INPUT_NO_OF_FRAMES = 30
 
 # All shots from the game, labels extracted from JSON 
 
@@ -20,7 +20,7 @@ def time_converter(time_in):
     return half.strip(), timestamp_seconds
 
 # For all shots: 
-ls = []
+X = []
 y = []
 
 
@@ -65,7 +65,7 @@ def extract_shots(game_path):
 
             # frames_list.append(frames)
             y.append(1) # Append label to the data
-            ls.append(clip_array)
+            X.append(clip_array)
 
 
 def crawl_dataset(root_dir):
@@ -96,18 +96,25 @@ def crawl_dataset(root_dir):
                     except Exception as e:
                         print(f"--- Error processing {game_path}: {e} ---")
                 else:
-                    print(f"-- Missing files in {game_path} --")
-        break
+                    print(f"-- Missing files in {game_path} --") 
 
-
-if __name__=='__main__':
+def get_data():
     print("Current working directory:", os.getcwd())
 
     crawl_dataset('data/SoccerNet') # the data is placed inside data/SoccerNet directory
 
     # We need to stack the training data into a numpy array. However, this can be done once all the frames have been extracted.
-    # train_data = np.stack(ls) 
+    train_data = np.stack(X) 
+    test_data = np.stack(y)
+    return train_data, test_data
 
+def save_data(data, labels):
+    np.savez_compressed("processed_data/data.npz", data=data, labels=labels)
+
+
+if __name__=='__main__':
+    train_data, test_data = get_data()
+    save_data(train_data, test_data)
 
 
 
