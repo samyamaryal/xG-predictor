@@ -1,0 +1,14 @@
+.DS_Store
+
+# Data directories
+data/
+processed_data/
+
+# env files
+.env
+
+# venv files
+.venv
+
+# All ipynb files for now
+*.ipynb
