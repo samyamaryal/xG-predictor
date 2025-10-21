@@ -10,7 +10,7 @@ INPUT_NO_OF_FRAMES = 30
 
 # All shots from the game, labels extracted from JSON 
 
-# If a shot was taken, I want to extract the time (in seconds) from that shot, and then extract a
+# If a shot was taken, I extract the time (in seconds) from that shot, and then extract a
 # frame sequence of 'n' frames leading upto that shot. 
 
 def time_converter(time_in):
@@ -50,15 +50,18 @@ def extract_shots(game_path):
             fps = cap.get(cv2.CAP_PROP_FPS)
 
             # Since we're reading frame-by-frame, we need the starting frame number. 
-            start_frame = int(time_in_seconds * fps)
+            # The starting frame number will be a certain number of frames before the shot was taken
+            start_frame = int(time_in_seconds * fps) - INPUT_NO_OF_FRAMES
 
             # If we want to extract 10 frames, this function will load up 10 frames from the video and stack them up into a numpy array
             # Each array will be of shape (10, (l, w, c))
-            for i in range(INPUT_NO_OF_FRAMES):
+            for i in range(int(INPUT_NO_OF_FRAMES*1.5)): # Add a buffer to get a few frames after the shot, just for sanity
                 cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame+i)
                 ret, frame = cap.read()
                 clip.append(frame)
 
+            # NOTE: We only know the time a shot was taken and not the exact frame, so the shot could be taken in any of the (INPUT_NO_OF_FRAMES) frames.
+            # I have added a small buffer to try and collect the exact moment of a shot for as many clips as possible.
 
             clip_array = np.stack(clip) # Shape 10, (l, w, c)
             
@@ -110,11 +113,10 @@ def get_data():
 
 def save_data(data, labels):
     np.savez_compressed("processed_data/data.npz", data=data, labels=labels)
+    print("Data saved to processed_data/")
 
 
 if __name__=='__main__':
     train_data, test_data = get_data()
     save_data(train_data, test_data)
-
-
 
