@@ -8,6 +8,9 @@ import os
 
 INPUT_NO_OF_FRAMES = 30
 
+save_directory = 'processed_data'
+processed_data_file = 'data.npz'
+
 # All shots from the game, labels extracted from JSON 
 
 # If a shot was taken, I extract the time (in seconds) from that shot, and then extract a
@@ -112,8 +115,9 @@ def get_data():
     return train_data, test_data
 
 def save_data(data, labels):
-    np.savez_compressed("processed_data/data.npz", data=data, labels=labels)
-    print("Data saved to processed_data/")
+    os.makedirs(save_directory, exist_ok=True)
+    np.savez_compressed(f"{save_directory}/{processed_data_file}", data=data, labels=labels)
+    print(f"Data saved to {save_directory}/")
 
 
 if __name__=='__main__':
