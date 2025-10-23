@@ -10,8 +10,5 @@ print(os.getenv("SOCCERNET_PASSWORD"))
 
 mySoccerNetDownloader.password = os.getenv("SOCCERNET_PASSWORD")
 
-# Download video files
-mySoccerNetDownloader.downloadGames(files=["1_720p.mkv", "2_720p.mkv"], split=["train","valid","test","challenge"])
-
-# Download labels
-mySoccerNetDownloader.downloadGames(files=["Labels-v2.json"], split=["train","valid","test"])
+# Download video files and labels
+mySoccerNetDownloader.downloadGames(files=["1_720p.mkv", "2_720p.mkv", "Labels-v2.json"], split=["train","valid","test"])
