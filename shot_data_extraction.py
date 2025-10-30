@@ -6,7 +6,7 @@ import json
 import cv2
 import os
 
-INPUT_NO_OF_FRAMES = 30
+INPUT_NO_OF_FRAMES = 32
 
 save_directory = 'processed_data'
 processed_data_file = 'data.npz'
@@ -58,7 +58,7 @@ def extract_shots(game_path):
 
             # If we want to extract 10 frames, this function will load up 10 frames from the video and stack them up into a numpy array
             # Each array will be of shape (10, (l, w, c))
-            for i in range(int(INPUT_NO_OF_FRAMES*1.5)): # Add a buffer to get a few frames after the shot, just for sanity
+            for i in range(int(INPUT_NO_OF_FRAMES)): # Add a buffer to get a few frames after the shot, just for sanity
                 cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame+i)
                 ret, frame = cap.read()
                 clip.append(frame)
