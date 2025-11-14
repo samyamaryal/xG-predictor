@@ -7,7 +7,7 @@ INPUT_NO_OF_FRAMES = 32
 ROOT_DIR = "data/SoccerNet"
 
 save_directory = "processed_data"
-BATCH_PREFIX = "data_batch"
+BATCH_PREFIX = "shot_batch"
 BATCH_SIZE = 32  # number of clips per .npz file
 
 
