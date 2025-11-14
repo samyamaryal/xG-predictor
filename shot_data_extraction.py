@@ -1,20 +1,15 @@
-from moviepy import *
-import torch
-import torchvision
-import numpy as np
 import json
-import cv2
 import os
+import cv2
+import numpy as np
 
 INPUT_NO_OF_FRAMES = 32
+ROOT_DIR = "data/SoccerNet"
 
-save_directory = 'processed_data'
-processed_data_file = 'data.npz'
+save_directory = "processed_data"
+BATCH_PREFIX = "data_batch"
+BATCH_SIZE = 32  # number of clips per .npz file
 
-# All shots from the game, labels extracted from JSON 
-
-# If a shot was taken, I extract the time (in seconds) from that shot, and then extract a
-# frame sequence of 'n' frames leading upto that shot. 
 
 def time_converter(time_in):
     half, time = time_in.split("-") # Half and time are split on this
@@ -22,105 +17,170 @@ def time_converter(time_in):
     timestamp_seconds = int(mins)*60+int(seconds) 
     return half.strip(), timestamp_seconds
 
-# For all shots: 
-X = []
-y = []
+
+class BatchWriter:
+    """
+    Accumulates (clip, label) pairs and writes them to disk in .npz batches.
+    """
+
+    def __init__(self, save_dir: str, batch_size: int, prefix: str = "data_batch"):
+        self.save_dir = save_dir
+        self.batch_size = batch_size
+        self.prefix = prefix
+
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.X_batch = []
+        self.y_batch = []
+        self.batch_idx = 0
+        self.total_samples = 0
+
+    def add(self, clip_array: np.ndarray, label: int):
+        """
+        Add one clip and its label to the current batch.
+        If batch is full, flush it to disk.
+        """
+        self.X_batch.append(clip_array)
+        self.y_batch.append(label)
+
+        if len(self.X_batch) >= self.batch_size:
+            self.flush()
+
+    def flush(self):
+        """
+        Save current batch to disk (if non-empty) and reset buffers.
+        """
+        if not self.X_batch:
+            return
+
+        data = np.stack(self.X_batch)              # shape: (B, T, H, W, C)
+        labels = np.array(self.y_batch)            # shape: (B,)
+
+        filename = f"{self.prefix}_{self.batch_idx:04d}.npz"
+        filepath = os.path.join(self.save_dir, filename)
+
+        np.savez_compressed(filepath, data=data, labels=labels)
+
+        self.total_samples += len(self.y_batch)
+        print(
+            f"[BatchWriter] Saved {filepath} with {len(self.y_batch)} samples "
+            f"(total={self.total_samples})"
+        )
+
+        self.batch_idx += 1
+        self.X_batch.clear()
+        self.y_batch.clear()
 
 
-def extract_shots(game_path):
-    with open(f'{game_path}/Labels-v2.json', "r") as file:
+def extract_shots(game_path: str, writer: BatchWriter):
+    """
+    For a single game folder, read Labels-v2.json,
+    extract shot clips, and push them to the BatchWriter.
+    """
+    labels_path = os.path.join(game_path, "Labels-v2.json")
+    if not os.path.exists(labels_path):
+        print(f"--- Missing Labels-v2.json in {game_path}, skipping ---")
+        return
+
+    with open(labels_path, "r") as file:
         data = json.load(file)
 
-    for item in data['annotations']:
+    for item in data.get("annotations", []):
+        if "Shot" not in item.get("label", ""):
+            continue
+
+        # Get half and time in seconds
+        half_number, time_in_seconds = time_converter(item["gameTime"])
+
+        # Generate source file name from the above video
+        filename = f"{half_number}_720p.mkv"
+        video_path = os.path.join(game_path, filename)
+
+        if not os.path.exists(video_path):
+            print(f"--- Video file missing: {video_path}, skipping annotation ---")
+            continue
+
+        # Read video to get shot clip
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        if fps <= 0:
+            print(f"--- Could not read FPS for {video_path}, skipping ---")
+            cap.release()
+            continue
+
+        # Starting frame number: a window of INPUT_NO_OF_FRAMES before shot time
+        start_frame = int(time_in_seconds * fps) - INPUT_NO_OF_FRAMES
+        if start_frame < 0:
+            start_frame = 0
+
         clip = []
-        if "Shot" in item['label']:
+        for i in range(int(INPUT_NO_OF_FRAMES)):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame + i)
+            ret, frame = cap.read()
+            if not ret:
+                # Ran out of frames; break early
+                break
+            clip.append(frame)
 
-            # Get half and time in seconds
-            half_number, time_in_seconds = time_converter(item['gameTime']) # time_converter returns the half that the game was played in, and the time of an event in seconds
-            # print("Half number and time extracted")
+        cap.release()
 
-            # Generate source file name from the above video
-            filename = f'{half_number}_720p.mkv'
+        # If we didn't get enough frames, skip this example
+        if len(clip) < INPUT_NO_OF_FRAMES:
+            print(
+                f"--- Not enough frames for shot at {item['gameTime']} in {video_path}, "
+                f"got {len(clip)} ---"
+            )
+            continue
 
-            video_path = f'{game_path}/{filename}'
-            # print("Video path", video_path)
+        clip_array = np.stack(clip)  # shape: (T, H, W, C)
 
-            if not os.path.exists(video_path):
-                raise FileNotFoundError(f"{video_path} does not exist")
-
-            # Read video to get shot clip 
-            cap = cv2.VideoCapture(video_path)
-            fps = cap.get(cv2.CAP_PROP_FPS)
-
-            # Since we're reading frame-by-frame, we need the starting frame number. 
-            # The starting frame number will be a certain number of frames before the shot was taken
-            start_frame = int(time_in_seconds * fps) - INPUT_NO_OF_FRAMES
-
-            # If we want to extract 10 frames, this function will load up 10 frames from the video and stack them up into a numpy array
-            # Each array will be of shape (10, (l, w, c))
-            for i in range(int(INPUT_NO_OF_FRAMES)): # Add a buffer to get a few frames after the shot, just for sanity
-                cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame+i)
-                ret, frame = cap.read()
-                clip.append(frame)
-
-            # NOTE: We only know the time a shot was taken and not the exact frame, so the shot could be taken in any of the (INPUT_NO_OF_FRAMES) frames.
-            # I have added a small buffer to try and collect the exact moment of a shot for as many clips as possible.
-
-            clip_array = np.stack(clip) # Shape 10, (l, w, c)
-            
-
-            # frames_list.append(frames)
-            y.append(1) # Append label to the data
-            X.append(clip_array)
+        # Label = 1 for shot
+        writer.add(clip_array, 1)
 
 
-def crawl_dataset(root_dir):
-
+def crawl_dataset(root_dir: str, writer: BatchWriter):
     for league_name in os.listdir(root_dir):
         league_path = os.path.join(root_dir, league_name)
-        print("\nLeague Path: ", league_path)
+        print("\nLeague Path:", league_path)
         if not os.path.isdir(league_path):
             continue
-        
+
         for season in os.listdir(league_path):
             season_path = os.path.join(league_path, season)
-            print("- Season Path: ", season_path)
+            print("- Season Path:", season_path)
             if not os.path.isdir(season_path):
                 continue
-            
+
             for game_name in os.listdir(season_path):
                 game_path = os.path.join(season_path, game_name)
-                print("-- Game Path: ", game_path)
+                print("-- Game Path:", game_path)
                 if not os.path.isdir(game_path):
                     continue
 
-                if os.path.exists(game_path):
-                    print(f"--- Processing: {game_path} ---")
-                    try:
-                        extract_shots(game_path)
-                        print(f"--- Processed {game_path} ---")
-                    except Exception as e:
-                        print(f"--- Error processing {game_path}: {e} ---")
-                else:
-                    print(f"-- Missing files in {game_path} --") 
+                print(f"--- Processing: {game_path} ---")
+                try:
+                    extract_shots(game_path, writer)
+                    print(f"--- Finished {game_path} ---")
+                except Exception as e:
+                    print(f"--- Error processing {game_path}: {e} ---")
 
-def get_data():
+
+if __name__ == "__main__":
     print("Current working directory:", os.getcwd())
 
-    crawl_dataset('data/SoccerNet') # the data is placed inside data/SoccerNet directory
+    writer = BatchWriter(
+        save_dir=save_directory,
+        batch_size=BATCH_SIZE,
+        prefix=BATCH_PREFIX,
+    )
 
-    # We need to stack the training data into a numpy array. However, this can be done once all the frames have been extracted.
-    train_data = np.stack(X) 
-    test_data = np.stack(y)
-    return train_data, test_data
+    crawl_dataset(ROOT_DIR, writer)
 
-def save_data(data, labels):
-    os.makedirs(save_directory, exist_ok=True)
-    np.savez_compressed(f"{save_directory}/{processed_data_file}", data=data, labels=labels)
-    print(f"Data saved to {save_directory}/")
+    # Flush any remaining samples that didn't fill a full batch
+    writer.flush()
 
-
-if __name__=='__main__':
-    train_data, test_data = get_data()
-    save_data(train_data, test_data)
-
+    print(
+        f"Done. Total samples saved: {writer.total_samples}, "
+        f"batches: {writer.batch_idx}"
+    )
