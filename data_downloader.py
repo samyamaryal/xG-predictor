@@ -6,7 +6,7 @@ from SoccerNet.Downloader import SoccerNetDownloader
 
 load_dotenv()
 mySoccerNetDownloader=SoccerNetDownloader(LocalDirectory="data/SoccerNet")
-print(os.getenv("SOCCERNET_PASSWORD"))
+os.getenv("SOCCERNET_PASSWORD")
 
 mySoccerNetDownloader.password = os.getenv("SOCCERNET_PASSWORD")
 
