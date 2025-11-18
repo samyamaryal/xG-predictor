@@ -35,19 +35,11 @@ for f in shot_batch_files:
 
 for f in non_shot_batch_files:
     batch = np.load(f)
-    n_data.append(batch["data"])
-    n_labels.append(batch["labels"])
+    p_data.append(batch["data"])
+    p_labels.append(batch["labels"])
 
-# shot_data = np.load("processed_data/data.npz")
-# p_data = shot_data["data"]
-# p_labels = shot_data['labels']
-
-# non_shot_data = np.load("processed_data/non_shots.npz")
-# n_data = non_shot_data["data"]
-# n_labels = non_shot_data['labels']
-
-X = np.concatenate((p_data, n_data), axis=1).squeeze()
-y = np.concatenate((p_labels, n_labels), axis=1).squeeze()
+X = np.concatenate(p_data, axis=0).squeeze()
+y = np.concatenate(p_labels, axis=0).squeeze()
 
 id2label = {0: "no shot", 1: "shot"}
 label2id = {v: k for k, v in id2label.items()}
@@ -160,8 +152,8 @@ def collate_fn(batch):
 
 
 
-train_bs = 2
-eval_bs = 2
+train_bs = 16
+eval_bs = 16
 
 args = TrainingArguments(
     output_dir="./vivit-exp",
@@ -169,14 +161,14 @@ args = TrainingArguments(
     per_device_eval_batch_size=eval_bs,
     gradient_accumulation_steps=1,
     learning_rate=3e-5,
-    num_train_epochs=1,
+    num_train_epochs=20,
     weight_decay=0.01,
     eval_strategy="steps",
-    eval_steps=10,
-    save_steps=20,
-    logging_steps=1,
-    dataloader_num_workers=0,
+    eval_steps=100,
+    save_steps=200,
+    logging_steps=10,
     remove_unused_columns=False,
+    dataloader_num_workers=8,
     logging_dir="./runs/vivit-exp",   # directory for TB logs
     report_to=["tensorboard"],  
 )
